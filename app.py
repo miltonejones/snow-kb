@@ -41,7 +41,7 @@ if os.getenv("OPENAI_API_KEY") is None or os.getenv("OPENAI_API_KEY") == "":
 
  
 if "pdf_file" not in st.session_state:
-  st.session_state.pdf_file = './src/dev_ops.pdf'
+  st.session_state.pdf_file = './src/client_api_reference.pdf'
     
 
 @st.cache_data
