@@ -5,4 +5,4 @@ python-dotenv==1.0.0
 streamlit==1.24.1
 textract==1.6.5
 transformers==4.30.2
-pypdf==3.0.1
+pypdf
