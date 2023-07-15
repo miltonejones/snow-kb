@@ -19,7 +19,7 @@ load_dotenv()
 print("Loading dataset...")
  
 # Simple method - Split by pages 
-loader = PyPDFLoader("./tokyo_api_reference_7-12-2023.pdf")
+loader = PyPDFLoader("./src/client_api_reference.pdf")
 pages = loader.load_and_split()
 chunks = pages
 

@@ -9,3 +9,4 @@ pypdf
 openai
 tiktoken
 faiss-cpu
+duckduckgo-search

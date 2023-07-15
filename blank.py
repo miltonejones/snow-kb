@@ -20,3 +20,6 @@ def blank_page():
     st.info('May occasionally generate incorrect information')
     st.info('Code markup is not formatted in this interface')
     st.info('Limited knowledge of world outside ServiceNow')
+
+  st.write(f':page_facing_up: **{st.session_state.selected_option}**')
+  st.caption(st.session_state.selected_desc)
