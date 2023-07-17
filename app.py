@@ -1,132 +1,39 @@
 from dotenv import load_dotenv
-import os
-import pandas as pd
-import textract
-import matplotlib.pyplot as plt
-# from transformers import GPT2TokenizerFast
-from langchain.document_loaders import PyPDFLoader 
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import FAISS 
-from langchain.llms import OpenAI
+import os 
 from langchain.chains import ConversationalRetrievalChain 
-
+from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
+from langchain.chat_models import ChatOpenAI
 from blank import blank_page
+from util import get_document_list, initialize_session, load_description, load_source_document, save_uploaded_file
 import streamlit as st
 
 load_dotenv()
- 
-@st.cache_data
-def load_source_document(pdf_file): 
-  base_name = os.path.basename(pdf_file)
-  folder_name = os.path.splitext(base_name)[0]
-  embeddings = OpenAIEmbeddings()
-
-  with st.spinner(text="Loading "+ folder_name +"..."): 
-    folder_path = f'db/{folder_name}'
-    if os.path.exists(folder_path) and os.path.isdir(folder_path):
-      # Folder already exists, do something if needed
-      return FAISS.load_local(folder_path, embeddings) 
-    else: 
-      loader = PyPDFLoader(pdf_file)
-      chunks = loader.load_and_split()  
-      db = FAISS.from_documents(chunks, embeddings)  
-      db.save_local(folder_path)
-      return db
-    
-def save_uploaded_file(uploaded_file):
-  # Create the 'src' folder if it doesn't exist
-  if not os.path.exists('src'):
-    os.makedirs('src')
   
-  # Save the uploaded file to the 'src' folder
-  file_path = os.path.join('src', uploaded_file.name)
-  with open(file_path, 'wb') as f:
-    f.write(uploaded_file.getbuffer())
-  
-  load_source_document(file_path)
-  return file_path
-
-def convert_file_name(file_name): 
-  file_name = file_name.split(".")[0] 
-  words = file_name.split("_") 
-  words = [word.capitalize() for word in words] 
-  return " ".join(words)
-  
-
-def get_document_list():
-  folder_path = './src'
-  file_object = {}
-
-  # Iterate over each file in the folder
-  for file_name in os.listdir(folder_path):
-    if os.path.isfile(os.path.join(folder_path, file_name)):
-      # Normalize the file name
-      normalized_key = convert_file_name(file_name)
-      
-      # Store the file path in the dictionary
-      file_object[normalized_key] = './src/' + file_name
-
-  # Sort the file list alphabetically
-  sorted_files = dict(sorted(file_object.items()))
-
-  return sorted_files
-
-
-@st.cache_data
-def load_description(_qa, pdf):
-  st.session_state.chat_history = []
-  result = _qa({"question": 'Give a one paragraph summary of the document, then Describe up to five subjects covered with one sentence each. use markup where possible', "chat_history": []})
-  # st.balloons()
-  return result
-
-
 # Load the OpenAI API key from the environment variable
 if os.getenv("OPENAI_API_KEY") is None or os.getenv("OPENAI_API_KEY") == "":
   print("OPENAI_API_KEY is not set")
   exit(1) 
 
- 
-if "pdf_file" not in st.session_state:
-  st.session_state.pdf_file = './src/client_api_reference.pdf'
-     
- 
-
-def main(): 
-  st.set_page_config(page_title="SNow-GPT")
-
- 
-  key_value_pairs = get_document_list()
-
-  if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
-      
-  if "selected_option" not in st.session_state:
-    st.session_state.selected_option = ''
-      
-  if "selected_desc" not in st.session_state:
-    st.session_state.selected_desc = None
-      
-  if "llm_temparature" not in st.session_state:
-    st.session_state.llm_temparature = 0.7
-
-  # build sidebar 
+# build and render page sidebar 
+def render_sidebar():
+  source_docs = get_document_list()
+  
   with st.sidebar:
 
     st.header("ServiceNow Chatbot") 
     st.write("The ServiceNow LLM Knowledge base") 
     
-    # Display radio buttons and handle selection
-    selected_option = st.radio('Select a document:', list(key_value_pairs.keys()), key="selected_option_key", 
-                                index=list(key_value_pairs.keys()).index(st.session_state.get('selected_option_key', 'Dev Ops')))
-
-    # "---"
-    # "" 
+    # Display radio buttons and handle document selection
+    selected_option = st.radio('Select a document:', 
+                                list(source_docs.keys()), 
+                                key="selected_option_key", 
+                                index=list(source_docs.keys()).index(st.session_state.get('selected_option_key', 'Dev Ops')))
+ 
     # Update session variable on button selection
     if selected_option:
-      st.session_state.pdf_file = key_value_pairs[selected_option]
+      st.session_state.pdf_file = source_docs[selected_option]
       st.session_state.selected_option = selected_option 
-      st.session_state.selected_desc = None
-      # st.session_state.chat_history = []
+      st.session_state.selected_desc = None 
 
     with st.expander(":gear: Settings"):
       # Create the slider and update 'llm_temparature' when it's changed
@@ -142,18 +49,30 @@ def main():
       if uploaded_file is not None:
         # Save the uploaded file and display a success message
         file_path = save_uploaded_file(uploaded_file)
-        st.success(f"File saved successfully: {file_path}")
-        key_value_pairs = get_document_list()
+        st.success(f"File saved successfully: {file_path}") 
 
 
-  llm = OpenAI(temperature=st.session_state.llm_temparature)
-      
-  db = load_source_document(st.session_state.pdf_file) 
+def main(): 
 
-  # Create conversation chain that uses our vectordb as retriver, this also allows for chat history management
-  qa = ConversationalRetrievalChain.from_llm(llm, db.as_retriever())
+  st.set_page_config(page_title="SNow-GPT", layout="wide") 
+  
+  # set initial session values
+  initialize_session() 
 
-  st.session_state.selected_desc = load_description(qa, st.session_state.pdf_file) ['answer'] 
+  # draw page side bar
+  render_sidebar()
+ 
+  # Create a ChatOpenAI object for streaming chat with specified temperature
+  chat = ChatOpenAI(streaming=True, callbacks=[StreamingStdOutCallbackHandler()], temperature=st.session_state.llm_temparature)
+
+  # Load the source document for the conversation retrieval
+  db = load_source_document(st.session_state.pdf_file)
+
+  # Create a conversation chain that uses the vectordb as a retriever, allowing for chat history management
+  qa = ConversationalRetrievalChain.from_llm(chat, db.as_retriever())
+
+  # Load the description using the conversation chain and store the answer in selected_desc
+  st.session_state.selected_desc = load_description(qa, st.session_state.pdf_file)['answer'] 
 
   # render existing chats
   for message in st.session_state.chat_history:
@@ -168,14 +87,20 @@ def main():
     # Display user message in chat message container
     st.chat_message("user").markdown(prompt)
 
-    with st.spinner(text="Generating answer..."): 
+    # Display a spinner while generating the answer
+    with st.spinner(text="Generating answer..."):
+      # Use the conversation chain (qa) to generate an answer based on the prompt and chat history
       result = qa({"question": prompt, "chat_history": st.session_state.chat_history})
+
+      # Get the answer from the result
       response = f"{result['answer']}"
+
+      # Append the prompt and response to the chat history
       st.session_state.chat_history.append((prompt, response))
 
-      # Display assistant response in chat message container
+      # Display the assistant's response in the chat message container
       with st.chat_message("assistant"):
-        st.markdown(response) 
+          st.markdown(response)
 
   # empty chat screen
   else:  
